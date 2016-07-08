@@ -206,7 +206,7 @@ class coupler(app_manager.RyuApp):
         #print "line 210 here are match", match 
         #print "line 211 here are instructions", inst
         #fix switch mod to address 'idle_t'
-        print "add_timeFlow match: ", match
+        #print "add_timeFlow match: ", match
         mod = parser.OFPFlowMod(datapath=dp,
                             priority=ops['priority'],
                             idle_timeout=ops['idle_t'],

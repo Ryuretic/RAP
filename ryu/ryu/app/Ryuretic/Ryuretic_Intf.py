@@ -111,7 +111,9 @@ class Ryuretic_coupler(coupler):
         def _loadFields(pkt):
             #keys specifies match fields for action. Default is
             #inport and #srcmac. ptype icmp, udp, etc.
-            print "loading fields"
+            #print "loading fields"
+            print pkt
+            #do something for ip
             fields = {'keys':['inport','srcmac'],'ptype':[], 
                       'dp':pkt['dp'], 'ofproto':pkt['ofproto'], 
                       'msg':pkt['msg'], 'inport':pkt['inport'], 
@@ -122,14 +124,14 @@ class Ryuretic_coupler(coupler):
             return fields
     
         def _loadOps():
-            print "Loading ops"
+            #print "Loading ops"
             #Specifies the timeouts, priority, operation and outport
             #options for op: 'fwd','drop', 'mir', 'redir', 'craft'
-            ops = {'hard_t':None, 'idle_t':None, 'priority':0, \
+            ops = {'hard_t':None, 'idle_t':100, 'priority':0, \
                    'op':'fwd', 'newport':None}
             return ops
         
-        print "default Field_Ops called"
+        #print "default Field_Ops called"
         fields = _loadFields(pkt)
         ops = _loadOps()
         return fields, ops

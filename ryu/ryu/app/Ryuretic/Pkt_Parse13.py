@@ -113,7 +113,7 @@ class Pkt_Parse(app_manager.RyuApp):
             pkt['winsize'] = tcp_p.window_size
             pkt['bits'] = tcp_p.bits
         udp_p = pkt['udp']= pkt['pkt'].get_protocol(udp.udp)
-        print udp_p
+        #print udp_p
         if udp_p != None:
             #pkt['udp'] = True
             pkt['csum'] = udp_p.csum
