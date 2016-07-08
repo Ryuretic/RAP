@@ -2,6 +2,9 @@
 
 """
 This example shows how to work with both wireless and wired medium
+
+cd mininet-wifi
+sudo python Ryuretic/RapTestBedTopo.py
 """
 
 from mininet.net import Mininet

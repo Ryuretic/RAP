@@ -31,9 +31,6 @@ from Ryuretic import coupler
 #########################################################################
 import string, random
 
-
-
-
 class Ryuretic_coupler(coupler):
     def __init__(self, *args, **kwargs):
         super(Ryuretic_coupler, self).__init__(*args, **kwargs)
@@ -43,9 +40,8 @@ class Ryuretic_coupler(coupler):
         #    Ex. ICMP_ECHO_REQUEST = 8, self.netView = {}               #
         #################################################################
         self.netView = {}    #Added for Tutorial 2
+        self.validNAT = 'aa:aa:aa:aa:aa:aa'
 
-        
-    
     ################ 3       Proactive Rule Sets    3 ###################
     #[3] Insert proactive rules defined below. Follow format below      #
     #    Options include drop or redirect, fwd is the default.          #
@@ -85,14 +81,14 @@ class Ryuretic_coupler(coupler):
 
     def handle_icmp(self,pkt):
         print "Handle ICMP"
-        #fields, ops = self.TTL_Check(pkt)  #Lab 9
-        fields, ops = self.default_Field_Ops(pkt)
+        fields, ops = self.TTL_Check(pkt)  #Lab 9
+        #fields, ops = self.default_Field_Ops(pkt)
         self.install_field_ops(pkt, fields, ops)
 
     def handle_tcp(self,pkt):
         print "handle TCP"
-        #fields, ops = self.TTL_Check(pkt) #Lab 9
-        fields, ops = self.default_Field_Ops(pkt)
+        fields, ops = self.TTL_Check(pkt) #Lab 9
+        #fields, ops = self.default_Field_Ops(pkt)
         self.install_field_ops(pkt, fields, ops)       
 
     def handle_udp(self,pkt):
@@ -110,16 +106,15 @@ class Ryuretic_coupler(coupler):
     def default_Field_Ops(self,pkt):
         def _loadFields(pkt):
             #keys specifies match fields for action. Default is
-            #inport and #srcmac. ptype icmp, udp, etc.
+            #inport and srcmac. ptype used for craft icmp, udp, etc.
             #print "loading fields"
-            print pkt
+            #print '_loadFields: ', pkt['ethtype']
             #do something for ip
-            fields = {'keys':['inport','srcmac'],'ptype':[], 
-                      'dp':pkt['dp'], 'ofproto':pkt['ofproto'], 
-                      'msg':pkt['msg'], 'inport':pkt['inport'], 
-                      'srcmac':pkt['srcmac'], 'ethtype':None, 
-                      'dstmac':None, 'srcip':None, 'proto':None, 
-                      'dstip':None, 'srcport':None, 'dstport':None,
+            fields = {'keys':['inport','srcmac'],'ptype':[], 'dp':pkt['dp'],
+                      'ofproto':pkt['ofproto'], 'msg':pkt['msg'],
+                      'inport':pkt['inport'], 'srcmac':pkt['srcmac'],
+                      'ethtype':pkt['ethtype'], 'dstmac':None, 'srcip':None,
+                      'proto':None, 'dstip':None, 'srcport':None, 'dstport':None,
                       'com':None, 'id':0}
             return fields
     
@@ -127,7 +122,7 @@ class Ryuretic_coupler(coupler):
             #print "Loading ops"
             #Specifies the timeouts, priority, operation and outport
             #options for op: 'fwd','drop', 'mir', 'redir', 'craft'
-            ops = {'hard_t':None, 'idle_t':100, 'priority':0, \
+            ops = {'hard_t':None, 'idle_t':None, 'priority':10, \
                    'op':'fwd', 'newport':None}
             return ops
         
@@ -143,9 +138,13 @@ class Ryuretic_coupler(coupler):
     ######################################################################
     # Confirm mac has been seen before and no issues are recorded
     def TTL_Check(self, pkt):
-        #####  Lab 9 Solution Goes Here  ##########
-
-        ########### End Lab Solution #########
+        #initialize fields and ops with default settings
+        fields, ops = self.default_Field_Ops(pkt)
+        if pkt['ttl']==63 or pkt['ttl']==127:
+            print 'NAT Detected'
+        if pkt['srcmac'] != self.validNAT:
+            print "Packet TTL: ", pkt['ttl'], '  ', pkt['srcip'],' ', \
+                  pkt['inport'],' ', pkt['srcmac']
         return fields, ops
 
     def Arp_Spoof_Check(self, pkt):

@@ -22,7 +22,7 @@
     c) Pkt_Parse13.py
     d) switch_mod13.py
 3) In your controller terminal type: cd ryu
-4) Enter PYTHONPATH=. ./bin/ryu-manager ryu/app/Ryuretic_Intf.py
+4) Enter PYTHONPATH=. ./bin/ryu-manager ryu/app/Ryuretic/Ryuretic_Intf.py
 """
 ######################################################################
 import logging
@@ -229,13 +229,13 @@ class coupler(app_manager.RyuApp):
     def install_field_ops(self, pkt, fields, ops):
         #Build match from pkt and fields
         match = self.pkt_match(fields)
-        print "Match Fields are:   ", match
+        #print "Match Fields are:   ", match
 	#Build actions from pkt and ops
         out_port, actions = self.pkt_action(pkt,ops,fields)
         priority = ops['priority']
         msg = fields['msg']                          
         parser, ofproto = fields['dp'].ofproto_parser, fields['ofproto']
-        print "install_field_ops ops: ", ops
+        #print "install_field_ops ops: ", ops
         # install temporary flow to avoid future packet_in. 
         # idle_t and hard_t must be set to something. 
         if ops['idle_t']: # or ops['hard_t']:
