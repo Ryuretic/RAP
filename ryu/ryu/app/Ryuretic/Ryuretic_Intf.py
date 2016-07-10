@@ -41,11 +41,8 @@ class Ryuretic_coupler(coupler):
         #################################################################
         self.netView = {}    #Added for Tutorial 2
         self.validNAT = 'aa:aa:aa:aa:aa:aa'
-<<<<<<< HEAD
         self.port_mac_map = {}
         self.port_tracker = {}
-=======
->>>>>>> feaad67b79cc5f26f7c99d0574ce889452adcadf
 
     ################ 3       Proactive Rule Sets    3 ###################
     #[3] Insert proactive rules defined below. Follow format below      #
@@ -85,23 +82,15 @@ class Ryuretic_coupler(coupler):
 
     def handle_icmp(self,pkt):
         print "Handle ICMP"
-<<<<<<< HEAD
         fields, ops = self.TTL_Check(pkt)
-=======
-        fields, ops = self.TTL_Check(pkt)  #Lab 9
->>>>>>> feaad67b79cc5f26f7c99d0574ce889452adcadf
         #fields, ops = self.default_Field_Ops(pkt)
         self.install_field_ops(pkt, fields, ops)
 
     def handle_tcp(self,pkt):
         print "handle TCP"
-<<<<<<< HEAD
         fields, ops = self.TTL_Check(pkt)
         if ops['op'] == 'fwd':
             fields, ops = self.Multi_MAC_Checker(pkt)
-=======
-        fields, ops = self.TTL_Check(pkt) #Lab 9
->>>>>>> feaad67b79cc5f26f7c99d0574ce889452adcadf
         #fields, ops = self.default_Field_Ops(pkt)
         self.install_field_ops(pkt, fields, ops)       
 
@@ -121,12 +110,6 @@ class Ryuretic_coupler(coupler):
         def _loadFields(pkt):
             #keys specifies match fields for action. Default is
             #inport and srcmac. ptype used for craft icmp, udp, etc.
-<<<<<<< HEAD
-=======
-            #print "loading fields"
-            #print '_loadFields: ', pkt['ethtype']
-            #do something for ip
->>>>>>> feaad67b79cc5f26f7c99d0574ce889452adcadf
             fields = {'keys':['inport','srcmac'],'ptype':[], 'dp':pkt['dp'],
                       'ofproto':pkt['ofproto'], 'msg':pkt['msg'],
                       'inport':pkt['inport'], 'srcmac':pkt['srcmac'],
@@ -157,7 +140,6 @@ class Ryuretic_coupler(coupler):
     def TTL_Check(self, pkt):
         #initialize fields and ops with default settings
         fields, ops = self.default_Field_Ops(pkt)
-<<<<<<< HEAD
         if pkt['srcmac'] != self.validNAT:
             if pkt['ttl']==63 or pkt['ttl']==127:
                 print 'TTL Decrement Detected on ', pkt['srcmac'], ' TTL is :', pkt['ttl']
@@ -169,13 +151,6 @@ class Ryuretic_coupler(coupler):
         else:
             ops['idle_t'] = 20
             priority = 10
-=======
-        if pkt['ttl']==63 or pkt['ttl']==127:
-            print 'NAT Detected'
-        if pkt['srcmac'] != self.validNAT:
-            print "Packet TTL: ", pkt['ttl'], '  ', pkt['srcip'],' ', \
-                  pkt['inport'],' ', pkt['srcmac']
->>>>>>> feaad67b79cc5f26f7c99d0574ce889452adcadf
         return fields, ops
 
     def Multi_MAC_Checker(self, pkt):
