@@ -31,9 +31,6 @@ from Ryuretic import coupler
 #########################################################################
 import string, random
 
-
-
-
 class Ryuretic_coupler(coupler):
     def __init__(self, *args, **kwargs):
         super(Ryuretic_coupler, self).__init__(*args, **kwargs)
@@ -43,9 +40,10 @@ class Ryuretic_coupler(coupler):
         #    Ex. ICMP_ECHO_REQUEST = 8, self.netView = {}               #
         #################################################################
         self.netView = {}    #Added for Tutorial 2
+        self.validNAT = 'aa:aa:aa:aa:aa:aa'
+        self.port_mac_map = {}
+        self.port_tracker = {}
 
-        
-    
     ################ 3       Proactive Rule Sets    3 ###################
     #[3] Insert proactive rules defined below. Follow format below      #
     #    Options include drop or redirect, fwd is the default.          #
@@ -73,7 +71,6 @@ class Ryuretic_coupler(coupler):
     def handle_arp(self,pkt):
         print "handle ARP"
         fields, ops = self.default_Field_Ops(pkt)
-        ### Uncomment to test Lab 10 solution #### 
         #fields, ops = self.Arp_Spoof_Check(pkt)#Lab 10
         self.install_field_ops(pkt,fields,ops)        
 		
@@ -85,18 +82,20 @@ class Ryuretic_coupler(coupler):
 
     def handle_icmp(self,pkt):
         print "Handle ICMP"
-        #fields, ops = self.TTL_Check(pkt)  #Lab 9
-        fields, ops = self.default_Field_Ops(pkt)
+        fields, ops = self.TTL_Check(pkt)
+        #fields, ops = self.default_Field_Ops(pkt)
         self.install_field_ops(pkt, fields, ops)
 
     def handle_tcp(self,pkt):
         print "handle TCP"
-        #fields, ops = self.TTL_Check(pkt) #Lab 9
-        fields, ops = self.default_Field_Ops(pkt)
+        fields, ops = self.TTL_Check(pkt)
+        if ops['op'] == 'fwd':
+            fields, ops = self.Multi_MAC_Checker(pkt)
+        #fields, ops = self.default_Field_Ops(pkt)
         self.install_field_ops(pkt, fields, ops)       
 
     def handle_udp(self,pkt):
-        #fields, ops = self.TTL_Check(pkt) #Lab 9
+        #fields, ops = self.TTL_Check(pkt)
         fields, ops = self.default_Field_Ops(pkt)
         self.install_field_ops(pkt, fields, ops)
 
@@ -110,26 +109,24 @@ class Ryuretic_coupler(coupler):
     def default_Field_Ops(self,pkt):
         def _loadFields(pkt):
             #keys specifies match fields for action. Default is
-            #inport and #srcmac. ptype icmp, udp, etc.
-            print "loading fields"
-            fields = {'keys':['inport','srcmac'],'ptype':[], 
-                      'dp':pkt['dp'], 'ofproto':pkt['ofproto'], 
-                      'msg':pkt['msg'], 'inport':pkt['inport'], 
-                      'srcmac':pkt['srcmac'], 'ethtype':None, 
-                      'dstmac':None, 'srcip':None, 'proto':None, 
-                      'dstip':None, 'srcport':None, 'dstport':None,
+            #inport and srcmac. ptype used for craft icmp, udp, etc.
+            fields = {'keys':['inport','srcmac'],'ptype':[], 'dp':pkt['dp'],
+                      'ofproto':pkt['ofproto'], 'msg':pkt['msg'],
+                      'inport':pkt['inport'], 'srcmac':pkt['srcmac'],
+                      'ethtype':pkt['ethtype'], 'dstmac':None, 'srcip':None,
+                      'proto':None, 'dstip':None, 'srcport':None, 'dstport':None,
                       'com':None, 'id':0}
             return fields
     
         def _loadOps():
-            print "Loading ops"
+            #print "Loading ops"
             #Specifies the timeouts, priority, operation and outport
             #options for op: 'fwd','drop', 'mir', 'redir', 'craft'
-            ops = {'hard_t':None, 'idle_t':None, 'priority':0, \
+            ops = {'hard_t':None, 'idle_t':None, 'priority':10, \
                    'op':'fwd', 'newport':None}
             return ops
         
-        print "default Field_Ops called"
+        #print "default Field_Ops called"
         fields = _loadFields(pkt)
         ops = _loadOps()
         return fields, ops
@@ -141,17 +138,47 @@ class Ryuretic_coupler(coupler):
     ######################################################################
     # Confirm mac has been seen before and no issues are recorded
     def TTL_Check(self, pkt):
-        #####  Lab 9 Solution Goes Here  ##########
-
-        ########### End Lab Solution #########
+        #initialize fields and ops with default settings
+        fields, ops = self.default_Field_Ops(pkt)
+        if pkt['srcmac'] != self.validNAT:
+            if pkt['ttl']==63 or pkt['ttl']==127:
+                print 'TTL Decrement Detected on ', pkt['srcmac'], ' TTL is :', pkt['ttl']
+                fields, ops = self.add_drop_params(pkt,fields,ops)
+            else:
+                ops['idle_t'] = 5
+            print "Packet TTL: ", pkt['ttl'], '  ', pkt['srcip'],' ', \
+                  pkt['inport'],' ', pkt['srcmac']
+        else:
+            ops['idle_t'] = 20
+            priority = 10
         return fields, ops
 
-    def Arp_Spoof_Check(self, pkt):
+    def Multi_MAC_Checker(self, pkt):
         fields, ops = self.default_Field_Ops(pkt)
-        #####  Lab 10 Solution Goes Here  ##########
-        
-        
-        ###########  End Lab Solution  ###############
+        print "*** Checking MAC ***"
+        #self.port_mac_map = {}
+        if self.port_mac_map.has_key(pkt['inport']):
+            if pkt['srcmac'] != self.port_mac_map[pkt['inport']]:
+                print " Multi-mac port detected "
+                fields, ops = self.add_drop_params(pkt,fields,ops)
+            else:
+                fields, ops = self.fwd_persist(pkt,fields,ops)
+        else:
+            self.port_mac_map[pkt['inport']] = pkt['srcmac']
+        return fields, ops
+
+    def add_drop_params(self, pkt, fields, ops):
+        #may need to include priority
+        fields['keys'] = ['inport']
+        fields['inport'] = pkt['inport']
+        ops['priority'] = 100
+        ops['idle_t'] = 60
+        ops['op']='drop'
+        return fields, ops
+    
+    def fwd_persist(self, pkt,fields,ops):
+        ops['idle_t'] = 10
+        ops['priority'] = 10
         return fields, ops
 
 
