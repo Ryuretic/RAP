@@ -70,7 +70,7 @@ def topology():
     net.addLink(sta6, ap3, bw=10, loss=5)
     #####################   Link devices to Switch    ######################## 
     net.addLink(ap1, s0)
-    net.addLink(h1, s0)
+    net.addLink(h1, s0, bw=50)
     net.addLink(h2, s0)
     net.addLink(h2, s0)
     net.addLink(h3, s0)
