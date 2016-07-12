@@ -39,10 +39,13 @@ class Ryuretic_coupler(coupler):
         #[2] Add new global variables here.                             #
         #    Ex. ICMP_ECHO_REQUEST = 8, self.netView = {}               #
         #################################################################
-        self.netView = {}    #Added for Tutorial 2
         self.validNAT = 'aa:aa:aa:aa:aa:aa'
         self.port_mac_map = {}
-        self.port_tracker = {}
+        self.port_monitor = {}
+        self.tta = {}
+        self.ttaAv = 0
+        self.check = False
+        self.count = 0
 
     ################ 3       Proactive Rule Sets    3 ###################
     #[3] Insert proactive rules defined below. Follow format below      #
@@ -88,10 +91,12 @@ class Ryuretic_coupler(coupler):
 
     def handle_tcp(self,pkt):
         print "handle TCP"
-        fields, ops = self.TTL_Check(pkt)
-        if ops['op'] == 'fwd':
-            fields, ops = self.Multi_MAC_Checker(pkt)
-        #fields, ops = self.default_Field_Ops(pkt)
+##        fields, ops = self.TTL_Check(pkt)
+##        if ops['op'] == 'fwd':
+##            fields, ops = self.Multi_MAC_Checker(pkt)
+##        #fields, ops = self.default_Field_Ops(pkt)
+        #fields, ops = self.displayTCPFields(pkt)
+        fields, ops = self.displayTCP(pkt)
         self.install_field_ops(pkt, fields, ops)       
 
     def handle_udp(self,pkt):
@@ -167,6 +172,37 @@ class Ryuretic_coupler(coupler):
             self.port_mac_map[pkt['inport']] = pkt['srcmac']
         return fields, ops
 
+    def displayTCP(self,pkt):
+        fields, ops = self.default_Field_Ops(pkt)
+        bits = pkt['bits']
+        dst = pkt['dstmac']
+        src = pkt['srcmac']
+        print src, bits, self.check
+        
+        if bits in [2,16,18]:
+            print '**SEQ: ', pkt['seq'], '\tACK ', pkt['ack'], ' **'
+            if bits == 2:
+                self.tta[src]= {}
+                self.tta[src]['inport'] = pkt['inport']
+                self.check=True
+            #Somehow this is not always sent(need to resolve error that ocurs here
+            #So far, AP stands out, but not the NAT (comparable to NAT)
+            elif bits == 18:
+                self.tta[dst]['syn'] = pkt['t_in']
+            elif bits == 16  and self.check==True:
+                self.tta[src]['ack'] = pkt['t_in']
+                tta = pkt['t_in'] - self.tta[src]['syn']
+                print '\n****    TTA = ', tta, ' ********\n'
+                self.count = self.count + 1
+                fields, ops = self.fwd_persist(pkt,fields,ops)
+                self.check = False
+            else:
+                fields, ops = self.fwd_persist(pkt,fields,ops)
+        else:
+            fields, ops = self.fwd_persist(pkt,fields,ops)
+            
+        return fields, ops
+
     def add_drop_params(self, pkt, fields, ops):
         #may need to include priority
         fields['keys'] = ['inport']
@@ -177,7 +213,7 @@ class Ryuretic_coupler(coupler):
         return fields, ops
     
     def fwd_persist(self, pkt,fields,ops):
-        ops['idle_t'] = 10
+        ops['idle_t'] = 3
         ops['priority'] = 10
         return fields, ops
 
@@ -236,3 +272,52 @@ class Ryuretic_coupler(coupler):
         return fields, ops
 
 
+##    def displayTCPFields(self,pkt):
+##        fields, ops = self.default_Field_Ops(pkt)
+##        a = pkt['bits']    
+##        #if a != 16 and a != 17 and a != 24:    
+##        if a not in [16,17,24]:    
+##            print "*******************\n", a, '\n ', a,"\n*******************"    
+##        print 'sIP', pkt['srcip'],'\tSEQ:', pkt['seq'], '\tACK:', pkt['ack'], \
+##          '\tSport:', pkt['srcport'], '\tDport:', pkt['dstport'], \
+##          '\tt_in:', pkt['t_in'], '\tFlags:', pkt['bits']    
+##
+##        if pkt['srcport'] == 80:    
+##            distTuple = (pkt['srcip'],pkt['srcport'])    
+##            locTuple = (pkt['dstip'],pkt['dstport'])    
+##        else:    
+##            locTuple = (pkt['srcip'],pkt['srcport'])    
+##            disTuple = (pkt['dstip'],pkt['dstport'])    
+##
+##        keyFound = self.tta.has_key(locTuple)    
+##
+##        if keyFound and pkt['srcport'] not in [80,443]:        
+##            if self.tta[locTuple]['check'] == False:    
+##                ack = self.tta[locTuple]['ack']    
+##                t_old = self.tta[locTuple]['t_in']    
+##                if pkt['seq'] == ack:    
+##                    print '******************\n',pkt['t_in'], ' - ', t_old    
+##                    time2ack= pkt['t_in'] - t_old    
+##                    self.tta[locTuple]['check'] = True    
+##                    if self.ttaAv == 0:    
+##                        self.ttaAv = time2ack    
+##                    else:    
+##                        self.ttaAv = (self.ttaAv + time2ack)/2    
+##                    print 'TTA: ', time2ack, '\tTTA Av: ', \
+##                          self.ttaAv, '\n************'    
+##        elif pkt['srcport'] in [80,443]:    
+##            if keyFound != True:    
+##                self.tta[locTuple] = {'ack':pkt['ack'], 't_in':pkt['t_in'],\
+##                              'check':False, 'cnt':1}   
+##            elif keyFound == True:    
+##                count = self.tta[locTuple]['cnt']    
+##                #print '*********Count: ', count    
+##                if self.tta[locTuple]['check'] == True:    
+##                    self.tta[locTuple] = {'ack':pkt['ack'], 't_in':pkt['t_in'],\
+##                                      'check':False, 'cnt':1}    
+##                elif self.tta[locTuple]['check'] == False and count >= 1:    
+##                    self.tta[locTuple]['cnt'] = count + 1    
+##                    self.tta[locTuple]['t_in'] = pkt['t_in']    
+##            else:    
+##                print pkt['tcp']
+##        return fields, ops

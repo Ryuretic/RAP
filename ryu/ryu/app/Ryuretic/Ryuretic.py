@@ -70,6 +70,11 @@ class coupler(app_manager.RyuApp):
         #Call <Pkt_Parse> to Build pkt object
         parsPkt = Pkt_Parse()
         pkt = parsPkt.handle_pkt(ev)
+
+        #potential flag check for DP and inport. If flagged, bypass checks.
+        #if port_monitor[pkt['dp']][pkt['inport']]['flag'] != None:
+        #   self.apply_flag(pkt) #now create method in interface
+        #Nest the rest in an else statement
         
         # Call appropriate handler for arriving packets (add IPv6,DHCP,etc.)
         if pkt['udp'] != None:
