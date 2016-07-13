@@ -72,7 +72,6 @@ def topology():
     net.addLink(ap1, s0)
     net.addLink(h1, s0)
     net.addLink(h2, s0)
-    net.addLink(h2, s0)
     net.addLink(h3, s0)
     net.addLink(h4, s0)
     net.addLink(h5, s0)

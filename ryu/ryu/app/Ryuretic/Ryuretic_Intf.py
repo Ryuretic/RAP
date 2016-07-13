@@ -41,11 +41,12 @@ class Ryuretic_coupler(coupler):
         #################################################################
         self.validNAT = 'aa:aa:aa:aa:aa:aa'
         self.port_mac_map = {}
-        self.port_monitor = {}
+        self.port_AV = {}
         self.tta = {}
-        self.ttaAv = 0
+        self.ttaAV = {}
         self.check = False
         self.count = 0
+        self.stage = 0
 
     ################ 3       Proactive Rule Sets    3 ###################
     #[3] Insert proactive rules defined below. Follow format below      #
@@ -90,7 +91,7 @@ class Ryuretic_coupler(coupler):
         self.install_field_ops(pkt, fields, ops)
 
     def handle_tcp(self,pkt):
-        print "handle TCP"
+        #print "handle TCP"
 ##        fields, ops = self.TTL_Check(pkt)
 ##        if ops['op'] == 'fwd':
 ##            fields, ops = self.Multi_MAC_Checker(pkt)
@@ -176,30 +177,112 @@ class Ryuretic_coupler(coupler):
         fields, ops = self.default_Field_Ops(pkt)
         bits = pkt['bits']
         dst = pkt['dstmac']
+        dstip = pkt['dstip']
+        dstport = pkt['dstport']
         src = pkt['srcmac']
-        print src, bits, self.check
-        
+        srcip = pkt['srcip']
+        srcport = pkt['srcport']        
+        inport = pkt['inport']
+        send = (src,srcip,dstip)
+        arrive = (dst,dstip,srcip)
+        t_in = pkt['t_in']
+
+        print "******"
+        print self.tta
+        print "******"
+        if bits == 20:
+            if self.tta.has_key(send):
+                self.tta[send]['stage'] = 0
+            else:
+                self.tta[arrive]['stage'] = 0
+            return fields, ops
+            
+        if bits == 2:
+            if self.tta.has_key(send):
+                self.tta[send].update({'inport':inport,'stage':1})
+            else:
+                self.tta.update({send:{'inport':inport,'stage':1}})
+            return fields, ops
+
+        if bits == 18:
+            if self.tta.has_key(arrive):
+                if self.tta[arrive]['stage']==1:
+                    self.tta[arrive].update({'syn':t_in,'stage':2})
+            return fields,ops
+
+        if bits == 16:
+            if self.tta.has_key(send):
+                if self.tta[send]['stage']==2:
+                    tta = t_in - self.tta[send]['syn']
+                    self.tta[send].update({'stage':3, 'ack':t_in, 'tta':tta})
+                    print '** Calc TTA :', tta
+                    if self.port_AV.has_key(self.tta[send]['inport']):
+                        portAV = ((self.port_AV[self.tta[send]['inport']] * \
+                                   4) + tta)/5
+                        self.port_AV[self.tta[send]['inport']] = portAV
+                    else:
+                        self.port_AV.update({self.tta[send]['inport']:tta})
+                    print self.port_AV
+                    del self.tta[send]
+                    return fields, ops
+            print "Persist"
+            fields, ops = self.fwd_persist(pkt,fields,ops)
+            return fields, ops
+
+        if bits == 24:
+            print "HTTP Push"
+            fields, ops = self.fwd_persist(pkt,fields,ops)
+            return fields, ops
+
+        if bits == 17:
+            fields, ops = self.fwd_persist(pkt,fields,ops)
+            return fields, ops
+
+        print "Packet not addressed", bits, inport, src, dstip
+           
+        return fields, ops
+
+
+    def displayTCP2(self,pkt):
+        fields, ops = self.default_Field_Ops(pkt)
+        bits = pkt['bits']
+        dst = pkt['dstmac']
+        src = pkt['srcmac']
+        inport = pkt['inport']
+        print '*******', inport, src, bits, self.stage #, self.check
+
         if bits in [2,16,18]:
             print '**SEQ: ', pkt['seq'], '\tACK ', pkt['ack'], ' **'
             if bits == 2:
                 self.tta[src]= {}
                 self.tta[src]['inport'] = pkt['inport']
-                self.check=True
+                #self.check=True
+                self.stage=1
             #Somehow this is not always sent(need to resolve error that ocurs here
             #So far, AP stands out, but not the NAT (comparable to NAT)
-            elif bits == 18:
+            elif bits == 18 and self.stage==1:
                 self.tta[dst]['syn'] = pkt['t_in']
-            elif bits == 16  and self.check==True:
+                self.stage = 2
+            elif bits == 16  and self.stage == 2: #self.check==True:
+                self.stage=3
                 self.tta[src]['ack'] = pkt['t_in']
                 tta = pkt['t_in'] - self.tta[src]['syn']
-                print '\n****    TTA = ', tta, ' ********\n'
+                if self.ttaAV.has_key(inport):
+                    self.ttaAV[inport]= (self.ttaAV[inport] + tta)/2
+                else:
+                    self.ttaAV[inport]= tta
+                print self.ttaAV[inport]
+                print '\n**** Port: ',inport,'   TTA = ', tta, ' ********\n'
                 self.count = self.count + 1
                 fields, ops = self.fwd_persist(pkt,fields,ops)
-                self.check = False
+                
+                #self.check = False
             else:
+                self.stage=0
                 fields, ops = self.fwd_persist(pkt,fields,ops)
         else:
             fields, ops = self.fwd_persist(pkt,fields,ops)
+        print self.ttaAV
             
         return fields, ops
 
