@@ -68,13 +68,15 @@ class Ryuretic_coupler(coupler):
     # fields,ops = self._build_FldOps(xfields,xops)                     #
     #####################################################################    
     def handle_eth(self,pkt):
-        print "handle eth"
+        #print "handle eth"
         fields, ops = self.default_Field_Ops(pkt)
         self.install_field_ops(pkt,fields,ops)
 
     def handle_arp(self,pkt):
-        print "handle ARP"
+        #print "handle ARP"
         fields, ops = self.default_Field_Ops(pkt)
+        #fields, ops = self.arp_persist(pkt)
+        
         #fields, ops = self.Arp_Spoof_Check(pkt)#Lab 10
         self.install_field_ops(pkt,fields,ops)        
 		
@@ -86,8 +88,8 @@ class Ryuretic_coupler(coupler):
 
     def handle_icmp(self,pkt):
         print "Handle ICMP"
-        fields, ops = self.TTL_Check(pkt)
-        #fields, ops = self.default_Field_Ops(pkt)
+        #fields, ops = self.TTL_Check(pkt)
+        fields, ops = self.default_Field_Ops(pkt)
         self.install_field_ops(pkt, fields, ops)
 
     def handle_tcp(self,pkt):
@@ -95,7 +97,7 @@ class Ryuretic_coupler(coupler):
 ##        fields, ops = self.TTL_Check(pkt)
 ##        if ops['op'] == 'fwd':
 ##            fields, ops = self.Multi_MAC_Checker(pkt)
-##        #fields, ops = self.default_Field_Ops(pkt)
+        #fields, ops = self.default_Field_Ops(pkt)
         #fields, ops = self.displayTCPFields(pkt)
         fields, ops = self.displayTCP(pkt)
         self.install_field_ops(pkt, fields, ops)       
@@ -183,13 +185,15 @@ class Ryuretic_coupler(coupler):
         srcip = pkt['srcip']
         srcport = pkt['srcport']        
         inport = pkt['inport']
-        send = (src,srcip,dstip)
-        arrive = (dst,dstip,srcip)
+        send = (src,srcip,srcport,dstip)
+        arrive = (dst,dstip,dstport,srcip)
         t_in = pkt['t_in']
 
         print "******"
         print self.tta
         print "******"
+        print self.port_AV
+        print "*******"
         if bits == 20:
             if self.tta.has_key(send):
                 self.tta[send]['stage'] = 0
@@ -218,28 +222,39 @@ class Ryuretic_coupler(coupler):
                     print '** Calc TTA :', tta
                     if self.port_AV.has_key(self.tta[send]['inport']):
                         portAV = ((self.port_AV[self.tta[send]['inport']] * \
-                                   4) + tta)/5
+                                   5) + tta)/6
                         self.port_AV[self.tta[send]['inport']] = portAV
                     else:
-                        self.port_AV.update({self.tta[send]['inport']:tta})
-                    print self.port_AV
+                        self.port_AV.update({self.tta[send]['inport']:0.001})
+                    print 'Port Averages: ', self.port_AV
                     del self.tta[send]
                     return fields, ops
             print "Persist"
-            fields, ops = self.fwd_persist(pkt,fields,ops)
+            fields, ops = self.tcp_persist(pkt,fields,ops)
             return fields, ops
 
         if bits == 24:
+            if self.tta.has_key(send):
+                del self.tta[send]
+            elif self.tta.has_key(arrive):
+                del self.tta[arrive]
+            print 'Port Averages: ', self.port_AV
             print "HTTP Push"
-            fields, ops = self.fwd_persist(pkt,fields,ops)
+            
+            fields, ops = self.tcp_persist(pkt,fields,ops)
             return fields, ops
 
         if bits == 17:
-            fields, ops = self.fwd_persist(pkt,fields,ops)
+            print 'Port Averages: ', self.port_AV
+            if self.tta.has_key(send):
+                del self.tta[send]
+            elif self.tta.has_key(arrive):
+                del self.tta[arrive]
+            #fields, ops = self.fwd_persist(pkt,fields,ops)
             return fields, ops
 
         print "Packet not addressed", bits, inport, src, dstip
-           
+          
         return fields, ops
 
 
@@ -286,6 +301,7 @@ class Ryuretic_coupler(coupler):
             
         return fields, ops
 
+
     def add_drop_params(self, pkt, fields, ops):
         #may need to include priority
         fields['keys'] = ['inport']
@@ -294,12 +310,25 @@ class Ryuretic_coupler(coupler):
         ops['idle_t'] = 60
         ops['op']='drop'
         return fields, ops
-    
+
+    def tcp_persist(self, pkt,fields,ops):
+        fields['keys'] = ['inport', 'srcmac', 'srcip', 'ethtype', 'srcport']
+        fields['srcport'] = pkt['srcport']
+        fields['srcip'] = pkt['srcip']
+        ops['idle_t'] = 3
+        ops['priority'] = 10
+        return fields, ops 
     def fwd_persist(self, pkt,fields,ops):
         ops['idle_t'] = 3
         ops['priority'] = 10
         return fields, ops
 
+    def arp_persist(self, pkt):
+        fields, ops = self.default_Field_Ops(pkt)
+        fields['keys'] = ['inport','srcmac','ethtype']
+        ops['idle_t'] = 10
+        ops['priority'] = 2
+        return fields, ops
 
 #############################################################################
 #############################################################################

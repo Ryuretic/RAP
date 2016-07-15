@@ -23,9 +23,9 @@ def topology():
     #create local controller for APs
     c0 = Controller( 'c0', port=6634 )
     #create controller for s0 (Ryuretic)
-    c1 = RemoteController( 'c1', ip='127.0.0.1', port=6633 )
+    #c1 = RemoteController( 'c1', ip='127.0.0.1', port=6633 )
     net.addController(c0)
-    net.addController(c1)
+    #net.addController(c1)
     
     print "*** Creating nodes"
     s0 = net.addSwitch('s0')
@@ -34,7 +34,7 @@ def topology():
                               position='10,30,0', range='20' )
     ap3 = net.addBaseStation( 'ap3', ssid="ssid_ap3", mode="g", channel="10",
                               position='50,30,0', range='20')
-    
+
     ################   Create Rogue Stations   #############################
     sta1 = net.addStation( 'sta1', ip='192.168.0.11/24', mac='AA:BB:BB:BB:BB:01',
                            defaultRoute='via 192.168.0.224', position='10,40,0' )
@@ -47,8 +47,7 @@ def topology():
     sta5 = net.addStation( 'sta5', ip='10.0.0.2/24', mac='AA:BB:BB:BB:BB:12',
                            defaultRoute='via 10.0.0.22', position='55,15,0' )
     sta6 = net.addStation( 'sta6', ip='10.0.0.3/24', mac='AA:BB:BB:BB:BB:13',
-                           defaultRoute='via 10.0.0.22', position='45,25,0' )
-    
+                           defaultRoute='via 10.0.0.22', position='45,125,0' )
     ##################    Create Hosts    ####################################
     h1 = net.addHost('h1', ip='192.168.0.1', mac='AA:AA:AA:AA:AA:01',
                      defaultRoute='via 192.168.0.224')
@@ -72,17 +71,17 @@ def topology():
     net.addLink(sta5, ap3, bw=10, loss=5)
     net.addLink(sta6, ap3, bw=10, loss=5)
     #####################   Link devices to Switch    ######################## 
-    net.addLink(ap1, s0, bw=10,)
-    net.addLink(h1, s0, bw=10,)
-    net.addLink(h2, s0, bw=10,)
-    net.addLink(h3, s0, bw=10,)
-    net.addLink(h4, s0, bw=10,)
-    net.addLink(h5, s0, bw=10,)
-    net.addLink(h6, s0, bw=10,)
+    net.addLink(ap1, s0)
+    net.addLink(h1, s0)
+    net.addLink(h2, s0)
+    net.addLink(h3, s0)
+    net.addLink(h4, s0)
+    net.addLink(h5, s0)
+    net.addLink(h6, s0)
     ######################   Create NAT for Internet   #######################
     nat = net.addHost( 'nat', cls=NAT, ip='192.168.0.224', mac='AA:AA:AA:AA:AA:AA',
                        subnet='192.168.0.0/24', inNamespace=False)
-    net.addLink(nat, s0, bw=50)
+    net.addLink(nat, s0)
     ###########################     Create RAP        ########################
     nat1=net.addHost('nat1', cls=NAT, ip='192.168.0.22', mac='AA:CC:CC:CC:CC:CC',
                                   subnet='10.0.0.0/24', inNameSpace=False,
@@ -94,10 +93,10 @@ def topology():
     net.build()
     #########################   Start Topology      ##########################     
     c0.start()
-    c1.start()                                                   
+    #c1.start()                                                   
     ap1.start( [c0] )
     ap3.start( [c0] )
-    s0.start( [c1] )
+    s0.start( [c0] )
     ########################   Add RAP Interface    ########################## 
     nat1.setIP('10.0.0.22/8', intf='nat1-eth1')
 
