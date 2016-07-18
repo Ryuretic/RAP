@@ -189,11 +189,11 @@ class Ryuretic_coupler(coupler):
         arrive = (dst,dstip,dstport,srcip)
         t_in = pkt['t_in']
 
-        print "******"
-        print self.tta
-        print "******"
-        print self.port_AV
-        print "*******"
+        #print "******"
+        #print self.tta
+        #print "******"
+        #print self.port_AV
+        #print "*******"
         if bits == 20:
             if self.tta.has_key(send):
                 self.tta[send]['stage'] = 0
@@ -222,11 +222,15 @@ class Ryuretic_coupler(coupler):
                     print '** Calc TTA :', tta
                     if self.port_AV.has_key(self.tta[send]['inport']):
                         portAV = ((self.port_AV[self.tta[send]['inport']] * \
-                                   5) + tta)/6
+                                   9) + tta)/10
                         self.port_AV[self.tta[send]['inport']] = portAV
                     else:
-                        self.port_AV.update({self.tta[send]['inport']:0.001})
-                    print 'Port Averages: ', self.port_AV
+                        portAV = ((0.001*9)+tta)/10
+                        self.port_AV.update({self.tta[send]['inport']:portAV})
+                    print "****"
+                    print "Port and TTA: ", inport, self.tta[send]['tta']
+                    print '\nPort Averages: ', self.port_AV
+                    print "****"
                     del self.tta[send]
                     return fields, ops
             print "Persist"
@@ -234,14 +238,14 @@ class Ryuretic_coupler(coupler):
             return fields, ops
 
         if bits == 24:
-            if self.tta.has_key(send):
-                del self.tta[send]
-            elif self.tta.has_key(arrive):
-                del self.tta[arrive]
-            print 'Port Averages: ', self.port_AV
+##            if self.tta.has_key(send):
+##                del self.tta[send]
+##            elif self.tta.has_key(arrive):
+##                del self.tta[arrive]
+##            print 'Port Averages: ', self.port_AV
             print "HTTP Push"
             
-            fields, ops = self.tcp_persist(pkt,fields,ops)
+##            fields, ops = self.tcp_persist(pkt,fields,ops)
             return fields, ops
 
         if bits == 17:
@@ -315,7 +319,7 @@ class Ryuretic_coupler(coupler):
         fields['keys'] = ['inport', 'srcmac', 'srcip', 'ethtype', 'srcport']
         fields['srcport'] = pkt['srcport']
         fields['srcip'] = pkt['srcip']
-        ops['idle_t'] = 3
+        ops['idle_t'] = 5
         ops['priority'] = 10
         return fields, ops 
     def fwd_persist(self, pkt,fields,ops):
