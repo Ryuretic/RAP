@@ -12,7 +12,7 @@
 # terms of the Ryuretic license, provided this work is cited        #
 # in the work for which it is used.                                 #
 # For latest updates, please visit:                                 #
-#                   https://github.gatech.edu/jcox70/RyureticLabs   #
+#                   https://github.com/Ryuretic/RAP                 #
 #####################################################################
 """How To Run This Program
 1) Ensure you have Ryu installed.
@@ -47,6 +47,13 @@ class Ryuretic_coupler(coupler):
         self.check = False
         self.count = 0
         self.stage = 0
+        self.cntrl ={'mac': 'ca:ca:ca:ad:ad:ad','ip':'192.168.0.40',
+                     'port':None}
+        self.policyTbl = {}
+        self.keyID = 101
+        self.t_agent = {}
+        ICMP_ECHO_REPLY = 0
+        ICMP_ECHO_REQUEST = 8       
 
     ################ 3       Proactive Rule Sets    3 ###################
     #[3] Insert proactive rules defined below. Follow format below      #
@@ -192,7 +199,7 @@ class Ryuretic_coupler(coupler):
         #print "******"
         #print self.tta
         #print "******"
-        #print self.port_AV
+        #print self.port_AV #port average
         #print "*******"
         if bits == 20:
             if self.tta.has_key(send):
@@ -262,50 +269,7 @@ class Ryuretic_coupler(coupler):
         return fields, ops
 
 
-    def displayTCP2(self,pkt):
-        fields, ops = self.default_Field_Ops(pkt)
-        bits = pkt['bits']
-        dst = pkt['dstmac']
-        src = pkt['srcmac']
-        inport = pkt['inport']
-        print '*******', inport, src, bits, self.stage #, self.check
-
-        if bits in [2,16,18]:
-            print '**SEQ: ', pkt['seq'], '\tACK ', pkt['ack'], ' **'
-            if bits == 2:
-                self.tta[src]= {}
-                self.tta[src]['inport'] = pkt['inport']
-                #self.check=True
-                self.stage=1
-            #Somehow this is not always sent(need to resolve error that ocurs here
-            #So far, AP stands out, but not the NAT (comparable to NAT)
-            elif bits == 18 and self.stage==1:
-                self.tta[dst]['syn'] = pkt['t_in']
-                self.stage = 2
-            elif bits == 16  and self.stage == 2: #self.check==True:
-                self.stage=3
-                self.tta[src]['ack'] = pkt['t_in']
-                tta = pkt['t_in'] - self.tta[src]['syn']
-                if self.ttaAV.has_key(inport):
-                    self.ttaAV[inport]= (self.ttaAV[inport] + tta)/2
-                else:
-                    self.ttaAV[inport]= tta
-                print self.ttaAV[inport]
-                print '\n**** Port: ',inport,'   TTA = ', tta, ' ********\n'
-                self.count = self.count + 1
-                fields, ops = self.fwd_persist(pkt,fields,ops)
-                
-                #self.check = False
-            else:
-                self.stage=0
-                fields, ops = self.fwd_persist(pkt,fields,ops)
-        else:
-            fields, ops = self.fwd_persist(pkt,fields,ops)
-        print self.ttaAV
-            
-        return fields, ops
-
-
+    # Call to temporarily install drop parameter for a packet to switch
     def add_drop_params(self, pkt, fields, ops):
         #may need to include priority
         fields['keys'] = ['inport']
@@ -314,14 +278,15 @@ class Ryuretic_coupler(coupler):
         ops['idle_t'] = 60
         ops['op']='drop'
         return fields, ops
-
+    # Call to temporarily install TCP flow connection on switch
     def tcp_persist(self, pkt,fields,ops):
         fields['keys'] = ['inport', 'srcmac', 'srcip', 'ethtype', 'srcport']
         fields['srcport'] = pkt['srcport']
         fields['srcip'] = pkt['srcip']
         ops['idle_t'] = 5
         ops['priority'] = 10
-        return fields, ops 
+        return fields, ops
+    
     def fwd_persist(self, pkt,fields,ops):
         ops['idle_t'] = 3
         ops['priority'] = 10
@@ -332,6 +297,116 @@ class Ryuretic_coupler(coupler):
         fields['keys'] = ['inport','srcmac','ethtype']
         ops['idle_t'] = 10
         ops['priority'] = 2
+        return fields, ops
+
+    #Builds notification information for trusted agent and sends if via
+    # self.update_TA (may want to combine these two definitions
+    def notify_TA(self, pkt,status):
+        keyID = self.keyID
+        self.keyID += 1
+        print "Adding Violation, passkey, and updating keyID"
+        violation = status # 's' or 't'
+        #create passkey
+        passkey =''.join(random.choice(string.ascii_letters) for x in range(8))
+        #update policy table
+        self.policyTbl[keyID]={'inport':pkt['inport'], 'srcmac':pkt['srcmac'],
+                               'passkey':passkey, 'violation':violation}
+        #Notify trusted agent of newly flagged client
+        self.update_TA(pkt, keyID, status)
+
+        return keyID
+    #Crafts tailored ICMP message for trusted agent
+    def update_TA(self,pkt, keyID, status):
+        table = self.policyTbl[keyID]
+        #print "Updating Trusted Agent"
+        fields, ops = {},{}
+        fields['keys'] = ['inport', 'srcip']
+        fields['dstip'] = self.t_agent['ip']
+        fields['srcip'] = self.cntrl['ip']
+        fields['dstmac'] = self.t_agent['mac']
+        fields['srcmac'] = self.cntrl['mac']
+        fields['dp'] = self.t_agent['dp']
+        fields['msg'] = self.t_agent['msg']
+        fields['inport'] = self.t_agent['port']
+        fields['ofproto']=self.t_agent['ofproto']
+        fields['ptype'] = 'icmp'
+        fields['ethtype'] = 0x0800
+        fields['proto'] = 1
+        fields['id'] = 0
+        fields['com'] = table['srcmac']+','+str(table['inport'])+\
+                        ','+str(table['passkey'])+','+table['violation']+\
+                        ','+str(keyID)
+        
+        ops = {'hard_t':None, 'idle_t':None, 'priority':0, \
+                   'op':'fwd', 'newport':None}
+        ops['op'] = 'craft'
+        ops['newport'] = self.t_agent['port']
+        
+        self.install_field_ops(pkt, fields, ops)
+
+    #Respond to ping. Forward or respond if to cntrl from trusted agent. 
+    def respond_to_ping(self,pkt):
+        fields, ops = self.default_Field_Ops(pkt)
+        #print "\n\nRespond to Ping"
+        print pkt['dstip'], self.cntrl['ip'], pkt['srcip']
+        if pkt['dstip'] == self.cntrl['ip'] and pkt['srcip'] == '192.168.0.1':
+            #print'respond to ping'
+            rcvData = pkt['data'].data
+            #Possible actions {i-init, d-delete, v-verify, 
+            action, keyID = rcvData.split(',')
+            
+            keyID = keyID.rstrip(' \t\r\n\0')
+            print len(keyID)
+            keyID = int(keyID)
+            print "Action is ", action
+            print "KeyID is ", keyID, ', ', type(keyID)
+            
+            print "\n\n\n*********"
+            ########################################
+            if action == 'i':
+                  self.t_agent = {'ip':pkt['srcip'],'mac':pkt['srcmac'],
+                                  'port':pkt['inport'],'msg':pkt['msg'],
+                                  'ofproto':pkt['ofproto'], 'dp':pkt['dp']}
+            elif action == 'd':
+                #Deleting flagged host policy
+                print "Deleting Policy Table"
+                print self.policyTbl.has_key(keyID)
+                print self.policyTbl.keys()
+                if self.policyTbl.has_key(keyID):
+                    srcmac = self.policyTbl[keyID]['srcmac']
+                    inport = self.policyTbl[keyID]['inport']
+                    print srcmac, ', ', inport
+                    if self.net_MacTbl.has_key(srcmac):
+                        print "Found MAC"
+                        self.net_MacTbl.pop(srcmac)
+                    if self.net_PortTbl.has_key(inport):
+                        print "Found Port"
+                        self.net_PortTbl.pop(inport)
+                    self.policyTbl.pop(keyID)
+            elif action is 'u':
+                #This is more complicated it requires data not being stored
+                #may need to add fields to policyTable. Maybe not. 
+                pass
+            elif action is 'a':
+                #Acknowledge receipt
+                pass
+            else:
+                print "No match"
+                
+                
+                
+            fields['dstip'] = pkt['srcip']
+            fields['srcip'] = self.cntrl['ip']
+            fields['dstmac'] = pkt['srcmac']
+            fields['srcmac'] = self.cntrl['mac']
+            
+            fields['ptype'] = 'icmp'
+            fields['ethtype'] = 0x0800
+            fields['proto'] = 1
+            fields['com'] = 'a,'+rcvData
+            ops['op'] = 'craft'
+            ops['newport'] = pkt['inport']
+
         return fields, ops
 
 #############################################################################
@@ -388,52 +463,45 @@ class Ryuretic_coupler(coupler):
         return fields, ops
 
 
-##    def displayTCPFields(self,pkt):
-##        fields, ops = self.default_Field_Ops(pkt)
-##        a = pkt['bits']    
-##        #if a != 16 and a != 17 and a != 24:    
-##        if a not in [16,17,24]:    
-##            print "*******************\n", a, '\n ', a,"\n*******************"    
-##        print 'sIP', pkt['srcip'],'\tSEQ:', pkt['seq'], '\tACK:', pkt['ack'], \
-##          '\tSport:', pkt['srcport'], '\tDport:', pkt['dstport'], \
-##          '\tt_in:', pkt['t_in'], '\tFlags:', pkt['bits']    
-##
-##        if pkt['srcport'] == 80:    
-##            distTuple = (pkt['srcip'],pkt['srcport'])    
-##            locTuple = (pkt['dstip'],pkt['dstport'])    
-##        else:    
-##            locTuple = (pkt['srcip'],pkt['srcport'])    
-##            disTuple = (pkt['dstip'],pkt['dstport'])    
-##
-##        keyFound = self.tta.has_key(locTuple)    
-##
-##        if keyFound and pkt['srcport'] not in [80,443]:        
-##            if self.tta[locTuple]['check'] == False:    
-##                ack = self.tta[locTuple]['ack']    
-##                t_old = self.tta[locTuple]['t_in']    
-##                if pkt['seq'] == ack:    
-##                    print '******************\n',pkt['t_in'], ' - ', t_old    
-##                    time2ack= pkt['t_in'] - t_old    
-##                    self.tta[locTuple]['check'] = True    
-##                    if self.ttaAv == 0:    
-##                        self.ttaAv = time2ack    
-##                    else:    
-##                        self.ttaAv = (self.ttaAv + time2ack)/2    
-##                    print 'TTA: ', time2ack, '\tTTA Av: ', \
-##                          self.ttaAv, '\n************'    
-##        elif pkt['srcport'] in [80,443]:    
-##            if keyFound != True:    
-##                self.tta[locTuple] = {'ack':pkt['ack'], 't_in':pkt['t_in'],\
-##                              'check':False, 'cnt':1}   
-##            elif keyFound == True:    
-##                count = self.tta[locTuple]['cnt']    
-##                #print '*********Count: ', count    
-##                if self.tta[locTuple]['check'] == True:    
-##                    self.tta[locTuple] = {'ack':pkt['ack'], 't_in':pkt['t_in'],\
-##                                      'check':False, 'cnt':1}    
-##                elif self.tta[locTuple]['check'] == False and count >= 1:    
-##                    self.tta[locTuple]['cnt'] = count + 1    
-##                    self.tta[locTuple]['t_in'] = pkt['t_in']    
-##            else:    
-##                print pkt['tcp']
-##        return fields, ops
+    def displayTCP2(self,pkt):
+        fields, ops = self.default_Field_Ops(pkt)
+        bits = pkt['bits']
+        dst = pkt['dstmac']
+        src = pkt['srcmac']
+        inport = pkt['inport']
+        print '*******', inport, src, bits, self.stage #, self.check
+
+        if bits in [2,16,18]:
+            print '**SEQ: ', pkt['seq'], '\tACK ', pkt['ack'], ' **'
+            if bits == 2:
+                self.tta[src]= {}
+                self.tta[src]['inport'] = pkt['inport']
+                #self.check=True
+                self.stage=1
+            #Somehow this is not always sent(need to resolve error that ocurs here
+            #So far, AP stands out, but not the NAT (comparable to NAT)
+            elif bits == 18 and self.stage==1:
+                self.tta[dst]['syn'] = pkt['t_in']
+                self.stage = 2
+            elif bits == 16  and self.stage == 2: #self.check==True:
+                self.stage=3
+                self.tta[src]['ack'] = pkt['t_in']
+                tta = pkt['t_in'] - self.tta[src]['syn']
+                if self.ttaAV.has_key(inport):
+                    self.ttaAV[inport]= (self.ttaAV[inport] + tta)/2
+                else:
+                    self.ttaAV[inport]= tta
+                print self.ttaAV[inport]
+                print '\n**** Port: ',inport,'   TTA = ', tta, ' ********\n'
+                self.count = self.count + 1
+                fields, ops = self.fwd_persist(pkt,fields,ops)
+                
+                #self.check = False
+            else:
+                self.stage=0
+                fields, ops = self.fwd_persist(pkt,fields,ops)
+        else:
+            fields, ops = self.fwd_persist(pkt,fields,ops)
+        print self.ttaAV
+            
+        return fields, ops
