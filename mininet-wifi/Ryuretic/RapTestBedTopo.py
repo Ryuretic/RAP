@@ -87,11 +87,11 @@ def topology():
     net.addLink(h5, s0, bw=15, delay=w_delay)
     net.addLink(h6, s0, bw=15, delay=w_delay)
     ######################   Create NAT for Internet   #######################
-    nat = net.addHost( 'nat', cls=NAT, ip='192.168.0.224', mac='AA:AA:AA:AA:AA:AA',
+    nat = net.addHost( 'nat', cls=NAT, ip='192.168.0.224', mac='AA:AA:AA:AA:02:24',
                        subnet='192.168.0.0/24', inNamespace=False)
     net.addLink(nat, s0, bw=50)
     ###########################     Create RAP        ########################
-    nat1=net.addHost('nat1', cls=NAT, ip='192.168.0.22', mac='AA:CC:CC:CC:CC:CC',
+    nat1=net.addHost('nat1', cls=NAT, ip='192.168.0.22', mac='AA:AA:AA:AA:00:22',
                                   subnet='10.0.0.0/24', inNameSpace=False,
                                   inetIntf='nat1-eth0', localIntf='nat1-eth1',
                                   defaultRoute='via 192.168.0.224')

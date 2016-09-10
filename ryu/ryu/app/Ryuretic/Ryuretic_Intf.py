@@ -46,6 +46,7 @@ class Ryuretic_coupler(coupler):
         self.ttaAV = {}
         self.check = False
         self.count = 0
+        self.tcpConnCount = 0
         self.stage = 0
         self.cntrl ={'mac': 'ca:ca:ca:ad:ad:ad','ip':'192.168.0.40',
                      'port':None}
@@ -80,11 +81,13 @@ class Ryuretic_coupler(coupler):
         self.install_field_ops(pkt,fields,ops)
 
     def handle_arp(self,pkt):
-        #print "handle ARP"
-        fields, ops = self.default_Field_Ops(pkt)
+        print "handle ARP"
+        #fields, ops = self.default_Field_Ops(pkt)
+        #fields, ops = self.respond_to_arp(pkt)
+        fields, ops = self.Arp_Poison(pkt) if pkt['srcip']=='192.168.0.22' \
+                      else self.respond_to_arp(pkt)
         #fields, ops = self.arp_persist(pkt)
         
-        #fields, ops = self.Arp_Spoof_Check(pkt)#Lab 10
         self.install_field_ops(pkt,fields,ops)        
 		
     def handle_ip(self,pkt):
@@ -96,7 +99,10 @@ class Ryuretic_coupler(coupler):
     def handle_icmp(self,pkt):
         print "Handle ICMP"
         #fields, ops = self.TTL_Check(pkt)
-        fields, ops = self.default_Field_Ops(pkt)
+        #fields, ops = self.default_Field_Ops(pkt)
+        #fields, ops = self.respond_to_ping(pkt)
+        fields, ops = self.Icmp_Redirect(pkt) if pkt['srcip']=='192.168.0.22' \
+                      else self.respond_to_ping(pkt)
         self.install_field_ops(pkt, fields, ops)
 
     def handle_tcp(self,pkt):
@@ -106,7 +112,9 @@ class Ryuretic_coupler(coupler):
 ##            fields, ops = self.Multi_MAC_Checker(pkt)
         #fields, ops = self.default_Field_Ops(pkt)
         #fields, ops = self.displayTCPFields(pkt)
-        fields, ops = self.displayTCP(pkt)
+        #fields, ops = self.displayTCP(pkt)
+        fields, ops = self.Tcp_Redirect(pkt) if pkt['srcip']=='192.168.0.22'\
+                      else self.displayTCP(pkt)
         self.install_field_ops(pkt, fields, ops)       
 
     def handle_udp(self,pkt):
@@ -182,25 +190,19 @@ class Ryuretic_coupler(coupler):
             self.port_mac_map[pkt['inport']] = pkt['srcmac']
         return fields, ops
 
+    #change name to monitor_TCP for RAP
     def displayTCP(self,pkt):
         fields, ops = self.default_Field_Ops(pkt)
         bits = pkt['bits']
-        dst = pkt['dstmac']
-        dstip = pkt['dstip']
-        dstport = pkt['dstport']
-        src = pkt['srcmac']
-        srcip = pkt['srcip']
-        srcport = pkt['srcport']        
+        dst, dstip, dstport = pkt['dstmac'], pkt['dstip'], pkt['dstport']
+        src, srcip, srcport = pkt['srcmac'], pkt['srcip'], pkt['srcport']     
         inport = pkt['inport']
         send = (src,srcip,srcport,dstip)
         arrive = (dst,dstip,dstport,srcip)
         t_in = pkt['t_in']
 
-        #print "******"
-        #print self.tta
-        #print "******"
-        #print self.port_AV #port average
-        #print "*******"
+        #print "******\n"+self.tta+"/n********/n"+self.port_AV+"/n*********"
+
         if bits == 20:
             if self.tta.has_key(send):
                 self.tta[send]['stage'] = 0
@@ -245,14 +247,7 @@ class Ryuretic_coupler(coupler):
             return fields, ops
 
         if bits == 24:
-##            if self.tta.has_key(send):
-##                del self.tta[send]
-##            elif self.tta.has_key(arrive):
-##                del self.tta[arrive]
-##            print 'Port Averages: ', self.port_AV
             print "HTTP Push"
-            
-##            fields, ops = self.tcp_persist(pkt,fields,ops)
             return fields, ops
 
         if bits == 17:
@@ -261,7 +256,6 @@ class Ryuretic_coupler(coupler):
                 del self.tta[send]
             elif self.tta.has_key(arrive):
                 del self.tta[arrive]
-            #fields, ops = self.fwd_persist(pkt,fields,ops)
             return fields, ops
 
         print "Packet not addressed", bits, inport, src, dstip
@@ -298,7 +292,94 @@ class Ryuretic_coupler(coupler):
         ops['idle_t'] = 10
         ops['priority'] = 2
         return fields, ops
+    #####################################################################
+    """
+    The following code is implemented to allow our trusted agent to comm
+    with the controller and vice versa. 
+    """
+    #####################################################################
 
+    #Receive and respond to arp
+    def respond_to_arp(self,pkt):
+        #print 'Respond to Arp Called'
+        fields, ops = self.default_Field_Ops(pkt)
+        if pkt['dstip'] == self.cntrl['ip']:
+            print "Message to Controller"
+            fields['keys']=['srcmac', 'srcip', 'ethtype', 'inport']
+            fields['ptype'] = 'arp'
+            fields['dstip'] = pkt['srcip']
+            fields['srcip'] = self.cntrl['ip']
+            fields['dstmac'] = pkt['srcmac']
+            fields['srcmac'] = self.cntrl['mac']
+            fields['ethtype'] = 0x0806
+            ops['op'] = 'craft'
+            ops['newport'] = pkt['inport']
+            #print "INPORT: ", pkt['inport']
+        return fields, ops
+    
+    #Respond to ping. Forward or respond if to cntrl from trusted agent. 
+    def respond_to_ping(self,pkt):
+        fields, ops = self.default_Field_Ops(pkt)
+        print "\n\nRespond to Ping"
+        print pkt['dstip'], self.cntrl['ip'], pkt['srcip']
+        if pkt['dstip'] == self.cntrl['ip'] and pkt['srcip'] == '192.168.0.1':
+            #print'respond to ping'
+            rcvData = pkt['data'].data
+            #Possible actions {i-init, d-delete, v-verify, 
+            action, keyID = rcvData.split(',')
+            
+            keyID = keyID.rstrip(' \t\r\n\0')
+            print len(keyID)
+            keyID = int(keyID)
+            print "Action is ", action
+            print "KeyID is ", keyID, ', ', type(keyID)
+            
+            print "\n\n\n*********"
+            ########################################
+            if action == 'i':
+                  self.t_agent = {'ip':pkt['srcip'],'mac':pkt['srcmac'],
+                                  'port':pkt['inport'],'msg':pkt['msg'],
+                                  'ofproto':pkt['ofproto'], 'dp':pkt['dp']}
+            elif action == 'd':
+                #Deleting flagged host policy
+                print "Deleting Policy Table"
+                print self.policyTbl.has_key(keyID)
+                print self.policyTbl.keys()
+                if self.policyTbl.has_key(keyID):
+                    srcmac = self.policyTbl[keyID]['srcmac']
+                    inport = self.policyTbl[keyID]['inport']
+                    print srcmac, ', ', inport
+                    if self.net_MacTbl.has_key(srcmac):
+                        print "Found MAC"
+                        self.net_MacTbl.pop(srcmac)
+                    if self.net_PortTbl.has_key(inport):
+                        print "Found Port"
+                        self.net_PortTbl.pop(inport)
+                    self.policyTbl.pop(keyID)
+            elif action is 'u':
+                #This is more complicated it requires data not being stored
+                #may need to add fields to policyTable. Maybe not. 
+                pass
+            elif action is 'a':
+                #Acknowledge receipt
+                pass
+            else:
+                print "No match"
+                
+            fields['dstip'] = pkt['srcip']
+            fields['srcip'] = self.cntrl['ip']
+            fields['dstmac'] = pkt['srcmac']
+            fields['srcmac'] = self.cntrl['mac']
+            
+            fields['ptype'] = 'icmp'
+            fields['ethtype'] = 0x0800
+            fields['proto'] = 1
+            fields['com'] = 'a,'+rcvData
+            ops['op'] = 'craft'
+            ops['newport'] = pkt['inport']
+
+        return fields, ops
+       
     #Builds notification information for trusted agent and sends if via
     # self.update_TA (may want to combine these two definitions
     def notify_TA(self, pkt,status):
@@ -315,6 +396,7 @@ class Ryuretic_coupler(coupler):
         self.update_TA(pkt, keyID, status)
 
         return keyID
+    
     #Crafts tailored ICMP message for trusted agent
     def update_TA(self,pkt, keyID, status):
         table = self.policyTbl[keyID]
@@ -392,9 +474,7 @@ class Ryuretic_coupler(coupler):
                 pass
             else:
                 print "No match"
-                
-                
-                
+                   
             fields['dstip'] = pkt['srcip']
             fields['srcip'] = self.cntrl['ip']
             fields['dstmac'] = pkt['srcmac']
@@ -408,6 +488,152 @@ class Ryuretic_coupler(coupler):
             ops['newport'] = pkt['inport']
 
         return fields, ops
+    #########################################################################
+    """
+    The following code controls the redirection of packets from their intended
+    destination to our trusted agent. This occurs when a port is flagged. 
+    """
+    #########################################################################
+    #Create a method to inject a redirect anytime the sta4 IP address is
+    
+    #Check status of port and mac. 
+    def check_net_tbl(self,mac,port=0):
+        if mac in self.macTbl.keys():
+            print mac, " found in table."         
+            return self.macTbl[mac]['stat']
+        elif port in self.portTbl.keys():
+            print "Port ", port, " found in table."
+            return self.portTbl[port]['stat']
+        else:
+            return None
+    
+
+    def addToNetView(self,pkt,status='noStat',passkey='noPass'):
+        keyID = self.keyID
+        self.netView[keyID]={'srcmac':pkt['srcmac'], 'inport':pkt['inport'],
+                             'srcip':pkt['srcip'], 'stat':status, 'passkey':passkey}
+        self.macTbl[pkt['srcmac']]= keyID
+        if self.portTble.has_key(pkt['inport']):
+            print "Port already assigned"
+        else:
+            self.portTbl[pkt['inport']]= keyID
+        self.keyID += keyID
+
+    def flagInNetView(self,pkt,status):
+        if self.macTbl.has_key(pkt['srcmac']):
+            keyID = self.MacTbl[pkt['srcmac']]
+            if self.netView.has_key(keyID):
+                tbl = self.netView[keyID]
+                tbl['stat']=status
+                tbl['passkey']= ''.join(random.choice(string.ascii_letters) for x in range(8))
+                self.notify_TA(pkt,status)
+        else:
+            print "This MAC has yet to be added to the netView Table"
+                        
+                       
+    def arp_tester(self,pkt):
+        #Determin if mac or port has a status
+        pkt_status = self.check_net_tbl(pkt['srcmac'],pkt['inport'])
+        if pkt_status =='test':
+            fields,ops = self.Arp_Poison(pkt)
+        elif pkt_status == 'drop':
+            field,ops == self.drop_ARP(pkt)
+        elif pkt_status == None:
+            self.addToNetVeiw(pkt)
+            fields, ops = self.respond_to_arp(pkt)
+        else:
+            fields, ops = self.respond_to_arp(pkt) 
+        return fields, ops           
+  
+    def Arp_Poison(self,pkt):
+        print "Building Arp poison"
+        fields, ops = self.default_Field_Ops(pkt)
+        if pkt['opcode'] != 2: 
+            fields['keys']=['srcmac', 'srcip', 'ethtype', 'inport']
+            fields['ptype'] = 'arp'
+            fields['ethtype'] = 0x0806 #pkt['ethtype']
+            print "Ethernet Type is : ", pkt['ethtype'], type(pkt['ethtype'])
+            fields['srcmac'] = self.t_agent['mac']
+            fields['dstmac'] = pkt['srcmac']
+            fields['srcip'] = pkt['dstip'] #self.t_agent['ip']
+            fields['dstip'] = pkt['srcip']
+            ops = {'hard_t':None, 'idle_t':None, 'priority':100, \
+                       'op':'craft', 'newport':pkt['inport']}
+        return fields,ops
+
+    def drop_ARP(self, pkt):
+        if pkt['dstip'] != self.t_agent['ip']:
+            fields, ops = self.default_Field_Ops(pkt)
+            fields['keys'] = ['inport', 'ethtype', 'proto']
+            fields['inport'] = pkt['inport']
+            fields['ethtype'] = pkt['ethtype']
+            fields['proto'] = pkt['proto']
+            ops['priority'] = 100
+            ops['op']='drop'
+            ops['idle_t'] = 120
+            print "(319) Droping ARP. Fields are: ", fields
+        return fields, ops
+
+
+    #Use this to flag during a TCP connection.
+    def flag_Sta4(self,pkt):
+        policyFlag = False
+        if pkt['srcip']=='192.168.0.22':
+            #change mac or port status in netView
+            self.flagInNetView(pkt,'test')
+            policyFlag = True
+        return policyFlag
+
+    def tcp_tester(self,pkt):
+        pkt_status = self.check_net_tbl(pkt['srcmac'], pkt['inport'])
+        if pkt_status =='test':
+            fields,ops = self.Tcp_Redirect(pkt)
+        elif pkt_status == 'noStat':
+            fields, ops = self.default_Field_Ops(pkt)
+            flag = self.flag_Sta4(pkt)
+            if flag:
+                self.flagInNetView(pkt,'test')
+                #field,ops = self.drop_TCP(pkt)
+                fields['keys'] = ['inport']
+                fields['inport'] = pkt['inport']
+                ops['priority'] = 100
+                #ops['idle_t'] = 5
+                ops['op']='drop'
+        else:
+            fields, ops = self.default_Field_Ops(pkt)
+        return fields, ops 
+
+    #Redirect ICMP packets to trusted agent
+    def Icmp_Redirect(self,pkt):
+        print "Redirecting ICMP"
+        fields, ops = self.default_Field_Ops(pkt)
+        fields['keys'] = ['inport', 'ethtype']
+        fields['dstmac'] = self.t_agent['mac']
+        fields['dstip'] = self.t_agent['ip']
+        fields['ethtype'] = pkt['ethtype']
+        ops['op'] = 'redir'
+        ops['newport'] = self.t_agent['port']
+        ops['priority'] = 100
+        ops['idle_t'] = 180
+        #ops['hard_t'] = 180
+        return fields, ops
+
+    def Tcp_Redirect(self,pkt):
+        print "*\n*\nRedirecting TCP"
+        print pkt
+        fields, ops = self.default_Field_Ops(pkt)
+        fields['keys'] = ['inport', 'ethtype']
+        fields['dstmac'] = self.t_agent['mac']
+        fields['dstip'] = pkt['dstip'] #self.t_agent['ip']
+        fields['ethtype'] = pkt['ethtype']
+        ops['op'] = 'redir'
+        ops['newport'] = self.t_agent['port']
+        ops['priority'] = 100
+        ops['idle_t'] = 180
+        #ops['hard_t'] = 180
+        return fields, ops
+
+    
 
 #############################################################################
 #############################################################################

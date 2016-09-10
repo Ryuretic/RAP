@@ -316,6 +316,26 @@ class coupler(app_manager.RyuApp):
         elif ops['op'] == 'drop':
             out_port = fields['ofproto'].OFPPC_NO_RECV
             actions.append(parser.OFPActionOutput(out_port))
+##############################################################################
+        elif ops['op'] == 'mod':
+			print "Modifying pkt"
+			#print "Fields Received: ", fields
+			actions.append(parser.OFPActionSetField(eth_src=fields['srcmac']))
+			actions.append(parser.OFPActionSetField(ipv4_src=fields['srcip']))
+			actions.append(parser.OFPActionSetField(eth_dst=fields['dstmac']))
+			actions.append(parser.OFPActionSetField(ipv4_dst=fields['dstip']))
+			if fields['srcport'] != None:
+				actions.append(parser.OFPActionSetField(tcp_src=fields['srcport']))
+			if fields['dstport'] != None:
+				actions.append(parser.OFPActionSetField(tcp_dst=fields['dstport']))
+			if ops['newport'] != None:
+				out_port = ops['newport']
+				actions.append(parser.OFPActionOutput(ops['newport']))
+			else:
+				out_port = self.switch.handle_pkt(pkt)
+				actions.append(parser.OFPActionOutput(out_port))
+			#print "ACTIONS: ", actions
+#############################################################################
         elif ops['op'] == 'redir':
             out_port = ops['newport']
             #print "line 312: dstmac: ", fields['dstmac']

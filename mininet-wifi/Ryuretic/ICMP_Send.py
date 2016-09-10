@@ -92,7 +92,7 @@ while(1):
     print "You entered: ", choice
     cntrlIP = '192.168.0.40'
     if int(choice) == 1: 
-        ping(cntrlIP, 'i,0')
+        ping(cntrlIP, 'i,0,0')
     elif int(choice) == 2:
         keyID = raw_input("Enter key ID:  ")
         ping(cntrlIP,'d,'+keyID)
