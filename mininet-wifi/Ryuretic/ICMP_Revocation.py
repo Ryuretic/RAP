@@ -86,7 +86,6 @@ def provide_result(keyID,match):
 
 while True:
 	try:
-		#tbl = open("/var/www/cgi-bin/RevTable.txt").readlines()
 		tbl = open("/var/www/cgi-bin/RapTable.txt").readlines()
 		# Receives keyID and match result
 		for line in range(len(tbl)):
@@ -96,13 +95,23 @@ while True:
 				data = tbl_line.split(',')
 				keyID, match = data[0], data[1]
 				print len(keyID), ' : ', keyID
-				#revoke_policy(keyID)
 				provide_result(keyID,match)
-		#tbl = open("/var/www/cgi-bin/RevTable.txt",'w')
 		tbl = open("/var/www/cgi-bin/RapTable.txt",'w')
 		tbl.close()
+		
+		rev_tbl = open("/var/www/cgi-bin/RevTable.txt").readlines()
+		for line in range(len(rev_tbl)):
+			if line != '\n':
+				keyID = rev_tbl[line].rstrip(' \t\r\n\0')
+				revtbl_line = rev_tbl[line].rstrip(' \t\r\n\0')
+				data = revtbl_line.split(',')
+				keyID = data[0]
+				print len(keyID), ' : ', keyID
+				revoke_policy(keyID)
+		rev_tbl = open("/var/www/cgi-bin/RevTable.txt",'w')
+		tbl.close()		
 	except ValueError:
 		#print ValueError
 		print "Attempt failed. Trying again."
 
-	time.sleep(30)
+	time.sleep(1)

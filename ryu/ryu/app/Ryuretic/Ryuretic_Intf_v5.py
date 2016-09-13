@@ -124,6 +124,8 @@ class Ryuretic_coupler(coupler):
 		pkt_status = self.check_ip_tbl(pkt)
 		if pkt_status == 'test': #test src and dest
 			fields,ops = self.redirect_TCP(pkt)
+		elif pkt_status == 'deny': 
+			fields,ops = self.redirect_TCP(pkt)
 		else:
 			#fields,ops = self.default_Field_Ops(pkt)
 			fields,ops = self.test_TCP(pkt)
@@ -147,7 +149,8 @@ class Ryuretic_coupler(coupler):
 		fields,ops = self.default_Field_Ops(pkt)
 			
 		if self.ipTbl.has_key(pkt['srcip']):
-			if self.ipTbl[pkt['srcip']]== 'test':
+			if self.ipTbl[pkt['srcip']] in ['test','deny']:
+				print "ipTbl Contents", self.ipTbl
 				key = (pkt['srcip'],pkt['srcport'])
 				print "Key is : ", key
 				self.tcp_tbl[key] = {'dstip':pkt['dstip'],'dstmac':pkt['dstmac'],
@@ -162,10 +165,10 @@ class Ryuretic_coupler(coupler):
 				
 		elif self.ipTbl.has_key(pkt['dstip']):
 			print "Returning to ", pkt['dstip']
-			if self.ipTbl[pkt['dstip']]== 'test':
+			if self.ipTbl[pkt['dstip']] in ['test','deny']:
+				print "ipTbl Contents", self.ipTbl
 				key = (pkt['dstip'],pkt['dstport'])
 				print "Key and table: ", key, ' ', self.tcp_tbl[key]
-				
 				fields.update({'srcmac':self.tcp_tbl[key]['dstmac'],
 				   'srcip':self.tcp_tbl[key]['dstip']})
 				#if self.tcp_tbl[key]['dstport'] == 443:
@@ -203,6 +206,8 @@ class Ryuretic_coupler(coupler):
 		#Added to build MAC and port associations	
 		pkt_status = self.check_ip_tbl(pkt)
 		if pkt_status == 'test': #test src and dest
+			fields,ops = self.redirect_DNS(pkt)
+		elif pkt_status == 'deny':
 			fields,ops = self.redirect_DNS(pkt)
 		else:
 			fields,ops = self.test_DNS(pkt)
@@ -474,17 +479,18 @@ class Ryuretic_coupler(coupler):
 			return srcmac, inport, srcip
 		
 		def remove_keyID(keyID):
+			print "Policy Table Contents: ", self.policyTbl
 			if self.policyTbl.has_key(keyID):
 				srcmac, inport, srcip = get_fields(keyID)
 				if self.macTbl.has_key(srcmac):
 					print "Removing MAC", srcmac
 					self.macTbl.pop(srcmac)
-				if self.portTable.has_key(inport):
+				if self.portTbl.has_key(inport):
 					print "Removing Port", inport
-					self.portTable.pop(inport)
-				if self.portTable.has_key(srcip):
-					print "Removing IP", IP
-					self.portTable.pop(IP)					
+					self.portTbl.pop(inport)
+				if self.ipTbl.has_key(srcip):
+					print "Removing IP", srcip
+					self.ipTbl.pop(srcip)					
 				self.policyTbl.pop(keyID)	
 				
 		print "Respond to Ping: ", pkt['srcmac'],'->',pkt['dstmac']
@@ -496,9 +502,14 @@ class Ryuretic_coupler(coupler):
 			#action, keyID = rcvData.split(',')
 			#keyID = keyID.rstrip(' \t\r\n\0')
 			print rcvData
-			action, keyID, result = rcvData.split(',')
+			try: 
+				action, keyID, result = rcvData.split(',')
+				result = result.rstrip(' \t\r\n\0')
+				print "Received Result"
+			except:
+				action, keyID = rcvData.split(',')
+				print "Received Revocation."
 			keyID = keyID.rstrip(' \t\r\n\0')
-			result = result.rstrip(' \t\r\n\0')
 			print "Key ID Length: ", len(keyID)
 			keyID = int(keyID)
 			print "KeyID is ", keyID, ', ', type(keyID)
