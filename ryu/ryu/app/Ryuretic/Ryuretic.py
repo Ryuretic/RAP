@@ -176,10 +176,13 @@ class coupler(app_manager.RyuApp):
         if ops['op'] == 'redir':
             out_port = ops['newport']
             actions.append(parser.OFPActionOutput(out_port))
+            
 
         match_vals = self._bld_match_vals(fields)
         
         match = parser.OFPMatch(**match_vals)
+        print "Action Added", actions
+        print "Match Values", match
         self.add_flow(datapath, ops['priority'], match, actions)
     
     ########################################################################
@@ -211,7 +214,7 @@ class coupler(app_manager.RyuApp):
         #print "line 210 here are match", match 
         #print "line 211 here are instructions", inst
         #fix switch mod to address 'idle_t'
-        print "add_timeFlow match: ", match
+        #print "add_timeFlow match: ", match
         mod = parser.OFPFlowMod(datapath=dp,
                             priority=ops['priority'],
                             idle_timeout=ops['idle_t'],

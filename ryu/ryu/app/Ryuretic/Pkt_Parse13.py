@@ -43,7 +43,7 @@ class Pkt_Parse(app_manager.RyuApp):
     #Not yet set up to handle IPv6
     def handle_pkt(self, ev):
         pkt = {}
-        pkt['t_in']= time.clock()
+        pkt['t_in']= int(round(time.time() *1000)) #time.time()*1000.0 #time.clock()
         pkt['msg'] = ev.msg
         pkt['dp'] = pkt['msg'].datapath
         pkt['ofproto'] = pkt['msg'].datapath.ofproto
